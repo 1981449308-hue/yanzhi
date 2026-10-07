@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>单词机</title>
+<style>
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{margin:0;background:#f4f2ee;color:#3b3a37;font-family:"Songti SC","STSong","Noto Serif CJK SC",serif;padding:22px 18px 44px;min-height:100vh;line-height:1.75;font-size:16px}
+  h1{font-size:19px;font-weight:normal;letter-spacing:.1em;margin:0 0 22px;color:#6b6a66}
+  .hint{font-size:13px;color:#8f8d88;margin:0 0 10px}
+  .meta{font-size:13px;color:#8f8d88;margin-top:12px}
+  textarea{width:100%;min-height:150px;padding:14px;border:1px solid #ddd8d0;border-radius:10px;background:#fbfaf8;color:#3b3a37;font-family:inherit;font-size:15px;line-height:1.9;resize:vertical}
+  textarea:focus{outline:none;border-color:#b8b2a8}
+  button{width:100%;min-height:50px;margin-top:14px;border:1px solid #cfc9c0;border-radius:10px;background:#fbfaf8;color:#4a4844;font-family:inherit;font-size:16px;letter-spacing:.06em}
+  button:active{background:#efece7}
+  button.plain{border:none;background:none;color:#8f8d88;font-size:14px;min-height:44px;margin-top:6px}
+  .seg{display:flex;gap:8px}
+  .seg button{margin-top:0;min-height:46px;font-size:15px}
+  .seg button.on{background:#e6ebe5;border-color:#a9b3a8;color:#4c5a4c}
+  .topbar{display:flex;justify-content:space-between;font-size:13px;color:#8f8d88;margin-bottom:26px}
+  .card{background:#fbfaf8;border:1px solid #e4dfd7;border-radius:14px;padding:38px 18px;text-align:center;margin-bottom:22px}
+  .zh{font-size:26px;letter-spacing:.04em;color:#3b3a37}
+  input[type=text]{width:100%;min-height:52px;padding:0 14px;border:1px solid #ddd8d0;border-radius:10px;background:#fbfaf8;color:#3b3a37;font-family:inherit;font-size:18px;letter-spacing:.06em}
+  input[type=text]:focus{outline:none;border-color:#b8b2a8}
+  .fb{min-height:26px;margin-top:14px;font-size:15px}
+  .fb.ok{color:#5f7a5f}
+  .fb.no{color:#a2614f}
+  .done{text-align:center;padding:16px 0}
+  .big{font-size:34px;color:#4c5a4c;margin:6px 0 0}
+  .list{font-size:14px;color:#8f8d88;line-height:2}
+</style>
+</head>
+<body>
+
+<section id="s-setup">
+  <h1>单词机</h1>
+  <p class="hint">每行一个词。英文和中文中间用空格、逗号或竖线隔开都行。</p>
+  <textarea id="lib" placeholder="abandon 放弃&#10;absorb 吸收&#10;accurate 准确的"></textarea>
+  <button id="save">存进去</button>
+  <p class="meta" id="libInfo"></p>
+  <p class="hint" style="margin-top:26px">这一轮过多少</p>
+  <div class="seg" id="seg">
+    <button data-n="20">20</button>
+    <button data-n="50" class="on">50</button>
+    <button data-n="100">100</button>
+  </div>
+  <button id="start">开始</button>
+</section>
+
+<section id="s-drill" hidden>
+  <div class="topbar"><span id="prog">0 / 0</span><span id="today"></span></div>
+  <div class="card"><div class="zh" id="zh">—</div></div>
+  <input type="text" id="en" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="打英文">
+  <button id="check">对一下</button>
+  <button class="plain" id="peek">看答案</button>
+  <div class="fb" id="fb"></div>
+</section>
+
+<section id="s-done" hidden>
+  <div class="done">
+    <p class="hint">这一轮完了</p>
+    <p class="big" id="score">0</p>
+    <p class="meta" id="detail"></p>
+  </div>
+  <p class="hint" id="wrongTitle" hidden>这几个回头还得抽你</p>
+  <p class="list" id="wrongList"></p>
+  <button id="again">再来一轮</button>
+  <button class="plain" id="back">改词库</button>
+</section>
+
+<script>
+(function(){
+  var WK='toy_words_v1', TK='toy_today_v1';
+  var words=[], queue=[], idx=0, target=50, right=0, wrong=0, wrongWords=[], busy=false;
+  function $(id){return document.getElementById(id)}
+  function loadWords(){try{words=JSON.parse(localStorage.getItem(WK))||[]}catch(e){words=[]}}
+  function saveWords(){try{localStorage.setItem(WK,JSON.stringify(words))}catch(e){}}
+  function dateStr(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
+  function getToday(){var t=null;try{t=JSON.parse(localStorage.getItem(TK))}catch(e){}if(!t||t.date!==dateStr())t={date:dateStr(),n:0};return t}
+  function setToday(t){try{localStorage.setItem(TK,JSON.stringify(t))}catch(e){}}
+  function renderInfo(){var n=words.length;$('libInfo').textContent='库里现在存着 '+n+' 个词。'}
+  function renderToday(){var t=getToday();$('today').textContent='今天过了 '+t.n+' 个';}
+
+  function parseLib(){
+    var lines=$('lib').value.split('\n'), out=[];
+    for(var i=0;i<lines.length;i++){
+      var t=lines[i].trim();
+      if(!t) continue;
+      var m=t.split(/[\s,，|｜]+/);
+      if(m.length<2) continue;
+      var en=m[0].trim(), zh=m.slice(1).join(' ').trim();
+      if(!en||!zh) continue;
+      var old=null;
+      for(var j=0;j<words.length;j++){if(words[j].en.toLowerCase()===en.toLowerCase()){old=words[j];break}}
+      out.push({en:en, zh:zh, wrong: old?old.wrong:0, repeat:false});
+    }
+    return out;
+  }
+
+  function buildQueue(){
+    var pool=words.slice();
+    for(var i=pool.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var t=pool[i];pool[i]=pool[j];pool[j]=t}
+    queue=pool.slice(0,Math.min(target,pool.length));
+    idx=0; right=0; wrong=0; wrongWords=[]; busy=false;
+  }
+
+  function show(){
+    if(idx>=queue.length){finish();return}
+    var w=queue[idx];
+    $('zh').textContent=w.zh;
+    $('en').value='';
+    $('fb').textContent=''; $('fb').className='fb';
+    $('prog').textContent=(idx+1)+' / '+queue.length;
+    busy=false;
+    try{$('en').focus()}catch(e){}
+  }
+
+  function norm(s){return s.trim().toLowerCase().replace(/\s+/g,' ')}
+
+  function check(){
+    if(busy) return;
+    var w=queue[idx]; if(!w) return;
+    var v=$('en').value;
+    if(!v.trim()) return;
+    busy=true;
+    if(norm(v)===norm(w.en)){
+      right++;
+      $('fb').textContent='对';
+      $('fb').className='fb ok';
+      var t=getToday(); t.n++; setToday(t); renderToday();
+      idx++; setTimeout(show,180);
+    }else{
+      wrong++;
+      w.wrong=(w.wrong||0)+1;
+      wrongWords.push(w);
+      if(!w.repeat){w.repeat=true; queue.push(w);}
+      $('fb').textContent='不对，是 '+w.en;
+      $('fb').className='fb no';
+      idx++; setTimeout(show,1600);
+    }
+  }
+
+  function peek(){
+    if(busy) return;
+    var w=queue[idx]; if(!w) return;
+    busy=true;
+    wrong++;
+    w.wrong=(w.wrong||0)+1;
+    wrongWords.push(w);
+    if(!w.repeat){w.repeat=true; queue.push(w);}
+    $('fb').textContent='是 '+w.en;
+    $('fb').className='fb no';
+    idx++; setTimeout(show,1600);
+  }
+
+  function finish(){
+    $('s-drill').hidden=true; $('s-done').hidden=false;
+    $('score').textContent=right+' 对';
+    $('detail').textContent='错 '+wrong+' 次，这一轮一共动了 '+queue.length+' 张卡。';
+    if(wrongWords.length){
+      $('wrongTitle').hidden=false;
+      var seen={}, out=[];
+      for(var i=0;i<wrongWords.length;i++){
+        var w=wrongWords[i];
+        if(seen[w.en]) continue;
+        seen[w.en]=1;
+        out.push(w.en+'　'+w.zh);
+      }
+      $('wrongList').textContent=out.join('\n');
+      $('wrongList').style.whiteSpace='pre-wrap';
+    }else{
+      $('wrongTitle').hidden=true; $('wrongList').textContent='';
+    }
+    saveWords();
+  }
+
+  $('save').onclick=function(){
+    var list=parseLib();
+    if(!list.length){alert('一行都没认出来，英文和中文之间要隔一下。');return}
+    words=list; saveWords(); renderInfo();
+    alert('存好了，'+words.length+' 个词。');
+  };
+  $('start').onclick=function(){
+    if(!words.length){alert('先存几个词再开始。');return}
+    for(var i=0;i<words.length;i++) words[i].repeat=false;
+    buildQueue();
+    $('s-setup').hidden=true; $('s-drill').hidden=false; $('s-done').hidden=true;
+    renderToday(); show();
+  };
+  $('check').onclick=check;
+  $('peek').onclick=peek;
+  $('en').addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();check()}});
+  $('again').onclick=function(){
+    for(var i=0;i<words.length;i++) words[i].repeat=false;
+    buildQueue();
+    $('s-done').hidden=true; $('s-drill').hidden=false;
+    show();
+  };
+  $('back').onclick=function(){
+    $('s-done').hidden=true; $('s-setup').hidden=false;
+    $('lib').value=words.map(function(w){return w.en+' '+w.zh}).join('\n');
+    renderInfo();
+  };
+  var segs=$('seg').getElementsByTagName('button');
+  for(var i=0;i<segs.length;i++){
+    segs[i].onclick=function(){
+      for(var k=0;k<segs.length;k++) segs[k].className='';
+      this.className='on';
+      target=parseInt(this.getAttribute('data-n'),10);
+    };
+  }
+
+  loadWords();
+  $('lib').value=words.map(function(w){return w.en+' '+w.zh}).join('\n');
+  renderInfo(); renderToday();
+})();
+</script>
+</body>
+</html>
