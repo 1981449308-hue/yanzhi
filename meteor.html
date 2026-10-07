@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#060a12">
+<title>今晚的流星</title>
+<style>
+  html,body{margin:0;height:100%;background:#05070d;overflow:hidden}
+  body{position:fixed;inset:0;background:radial-gradient(120% 80% at 70% 8%,#16203a 0%,#0a1020 45%,#04060c 100%)}
+  canvas{display:block;width:100%;height:100%;position:absolute;inset:0}
+  .date{position:fixed;right:18px;top:18px;color:#3f4c62;font-family:"Songti SC","STSong",serif;font-size:12px;letter-spacing:.16em;pointer-events:none}
+  .wish{position:fixed;left:0;right:0;top:46px;text-align:center;color:#ccd7ea;font-family:"Songti SC","STSong","Noto Serif CJK SC",serif;font-size:16px;letter-spacing:.08em;line-height:1.95;padding:0 36px;pointer-events:none;text-shadow:0 0 20px rgba(120,155,225,.35)}
+  .tip{position:fixed;left:0;right:0;bottom:24px;text-align:center;color:#6d7c92;font-family:"Songti SC","STSong",serif;font-size:13px;letter-spacing:.12em;pointer-events:none}
+  .edit{position:fixed;right:16px;bottom:20px;background:none;border:none;color:#42506a;font-family:"Songti SC","STSong",serif;font-size:12px;letter-spacing:.12em;padding:12px}
+  .edit:active{color:#8ea2c4}
+</style>
+</head>
+<body>
+<canvas id="sky"></canvas>
+<div class="date" id="date"></div>
+<div class="wish" id="wish"></div>
+<div class="tip" id="tip"></div>
+<button class="edit" id="edit">写一句</button>
+<script>
+(function(){
+  var cvs=document.getElementById('sky');
+  var ctx=cvs.getContext('2d');
+  var W=0,H=0;
+  var stars=[],meteors=[],count=0;
+  var nextAuto=1.6;
+  var last=0;
+
+  function resize(){
+    var dpr=Math.min(window.devicePixelRatio||1,2);
+    W=window.innerWidth; H=window.innerHeight;
+    cvs.width=Math.floor(W*dpr); cvs.height=Math.floor(H*dpr);
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    buildStars();
+  }
+
+  function buildStars(){
+    stars=[];
+    var n=Math.max(90,Math.round(W*H/4600));
+    for(var i=0;i<n;i++){
+      stars.push({
+        x:Math.random()*W,
+        y:Math.random()*H*0.94,
+        r:0.3+Math.random()*1.15,
+        p:Math.random()*6.283,
+        s:0.5+Math.random()*1.5,
+        a:0.22+Math.random()*0.6
+      });
+    }
+  }
+
+  function spawn(x,y,manual){
+    var dir=Math.random()<0.5?1:-1;
+    var ang=0.40+Math.random()*0.24;
+    var sp=380+Math.random()*280;
+    meteors.push({
+      x:x, y:y,
+      vx:Math.cos(ang)*sp*dir,
+      vy:Math.sin(ang)*sp,
+      life:1,
+      decay:0.8+Math.random()*0.7
+    });
+    count++;
+    renderTip();
+  }
+
+  function renderTip(){
+    document.getElementById('tip').textContent='今晚划过 '+count+' 颗　点一下，再招一颗';
+  }
+
+  function drawMilkyWay(t){
+    ctx.save();
+    ctx.translate(W*0.66,H*0.16);
+    ctx.rotate(-0.52);
+    ctx.scale(1,0.34);
+    var R=Math.max(W,H)*0.95;
+    var rg=ctx.createRadialGradient(0,0,0,0,0,R);
+    rg.addColorStop(0,'rgba(126,158,226,0.10)');
+    rg.addColorStop(0.45,'rgba(92,124,196,0.05)');
+    rg.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.fillStyle=rg;
+    ctx.beginPath(); ctx.arc(0,0,R,0,6.2832); ctx.fill();
+    ctx.restore();
+  }
+
+  function drawStars(t){
+    for(var i=0;i<stars.length;i++){
+      var s=stars[i];
+      var a=s.a*(0.5+0.5*Math.sin(t*s.s+s.p));
+      if(a<0.04) a=0.04;
+      ctx.globalAlpha=a;
+      ctx.fillStyle='#e2eaff';
+      ctx.beginPath(); ctx.arc(s.x,s.y,s.r,0,6.2832); ctx.fill();
+    }
+    ctx.globalAlpha=1;
+  }
+
+  function drawMeteors(dt){
+    for(var i=meteors.length-1;i>=0;i--){
+      var m=meteors[i];
+      m.x+=m.vx*dt; m.y+=m.vy*dt;
+      m.life-=m.decay*dt;
+      if(m.life<=0||m.x<-420||m.x>W+420||m.y>H+420){
+        meteors.splice(i,1); continue;
+      }
+      var tl=0.17;
+      var tx=m.x-m.vx*tl, ty=m.y-m.vy*tl;
+      var a=Math.min(1,m.life);
+      var g=ctx.createLinearGradient(m.x,m.y,tx,ty);
+      g.addColorStop(0,'rgba(236,243,255,'+(a*0.95)+')');
+      g.addColorStop(0.34,'rgba(172,200,255,'+(a*0.42)+')');
+      g.addColorStop(1,'rgba(140,172,240,0)');
+      ctx.strokeStyle=g;
+      ctx.lineWidth=1.8;
+      ctx.lineCap='round';
+      ctx.beginPath(); ctx.moveTo(m.x,m.y); ctx.lineTo(tx,ty); ctx.stroke();
+      var rg=ctx.createRadialGradient(m.x,m.y,0,m.x,m.y,10);
+      rg.addColorStop(0,'rgba(255,255,255,'+(a*0.75)+')');
+      rg.addColorStop(1,'rgba(180,205,255,0)');
+      ctx.fillStyle=rg;
+      ctx.beginPath(); ctx.arc(m.x,m.y,10,0,6.2832); ctx.fill();
+    }
+  }
+
+  function frame(now){
+    var t=now/1000;
+    if(!last) last=t;
+    var dt=Math.min(0.05,t-last);
+    last=t;
+
+    ctx.clearRect(0,0,W,H);
+    drawMilkyWay(t);
+    drawStars(t);
+
+    nextAuto-=dt;
+    if(nextAuto<=0){
+      var fromLeft=Math.random()<0.5;
+      spawn(fromLeft?-90:W+90, Math.random()*H*0.32-50, false);
+      nextAuto=1.8+Math.random()*3.2;
+    }
+    drawMeteors(dt);
+    requestAnimationFrame(frame);
+  }
+
+  window.addEventListener('pointerdown',function(e){
+    spawn(e.clientX-46,e.clientY-46,true);
+  });
+
+  document.getElementById('edit').addEventListener('click',function(ev){
+    ev.stopPropagation();
+    var v=window.prompt('留一句今晚的话',document.getElementById('wish').textContent||'');
+    if(v!==null&&v.trim()){
+      try{localStorage.setItem('toy_meteor_wish_v1',v.trim())}catch(err){}
+      document.getElementById('wish').textContent=v.trim();
+    }
+  });
+
+  function boot(){
+    var d=new Date();
+    document.getElementById('date').textContent=(d.getMonth()+1)+'月'+d.getDate()+'日 · 天龙座流星雨';
+    var w='';
+    try{w=localStorage.getItem('toy_meteor_wish_v1')||''}catch(e){}
+    document.getElementById('wish').textContent = w || '今晚抬头的人，都算许过愿。';
+    renderTip();
+    resize();
+  boot();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
